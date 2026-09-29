@@ -72,7 +72,9 @@ export function CalendarPage({ business }: { business: Business }) {
           right: "timeGridDay,timeGridWeek",
         }}
         allDaySlot={false}
-        height="auto"
+        // A fixed height gives the day its own scroll area, so it opens at
+        // scrollTime instead of midnight while late bookings stay reachable.
+        height="75vh"
         slotMinTime="00:00:00"
         scrollTime="08:00:00"
         slotMaxTime="24:00:00"
