@@ -1,8 +1,6 @@
 """Editable Booking domain for one store, using the local copy of Business Core."""
 
 from core.models import CustomerIdentity, Record
-from django.contrib.postgres.constraints import ExclusionConstraint
-from django.contrib.postgres.fields import DateTimeRangeField, RangeBoundary, RangeOperators
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -87,11 +85,6 @@ class Customer(Record):
         ordering = ["identity__display_name", "id"]
 
 
-class TsTzRange(models.Func):
-    function = "TSTZRANGE"
-    output_field = DateTimeRangeField()
-
-
 class Booking(Record):
     currency = models.CharField(max_length=3)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT)
@@ -115,15 +108,4 @@ class Booking(Record):
             models.CheckConstraint(
                 condition=models.Q(end__gt=models.F("start")), name="booking_forward"
             ),
-            *[
-                ExclusionConstraint(
-                    name=f"booking_no_overlap_{field}",
-                    expressions=[
-                        (field, RangeOperators.EQUAL),
-                        (TsTzRange("start", "end", RangeBoundary()), RangeOperators.OVERLAPS),
-                    ],
-                    condition=models.Q(status="confirmed"),
-                )
-                for field in ("staff", "customer")
-            ],
         ]

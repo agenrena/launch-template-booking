@@ -8,3 +8,8 @@
 **/*.pyc
 .runtime
 .preview-*
+
+release-dist
+.secrets
+.github
+data

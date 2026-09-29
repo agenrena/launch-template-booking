@@ -1,5 +1,26 @@
 # 驗證紀錄
 
+## 2026-09-30：預設在這台電腦上執行，樣式集中於 theme.css
+
+同步 business_core 的本機執行與樣式重構，並拿掉兩條 PostgreSQL exclusion constraint。Agenrena 未設定，沒有連到真實平台。
+
+| 檢查 | 結果 |
+|---|---|
+| Django | 65 項測試在 SQLite 與 PostgreSQL 17 都通過，含「兩位顧客同時訂同一人員同一時段只成立一筆」「同時重試只一筆」的並行測試（拿掉資料庫限制後，由 services 的鎖與 SQLite IMMEDIATE 保證）；makemigrations --check 通過 |
+| 首次啟動 | 乾淨副本、只有 `/usr/bin:/bin` 的 PATH 執行 `./start.command --no-browser`：安裝、建置、建立 `data/db.sqlite3`，在 127.0.0.1:8080 提供畫面 |
+| 首次建立擁有者 | 真實 HTTP：可建立 → 直接登入 → 第二次 403 |
+| 示範資料 | `./start.command manage seed_demo` 建立服務、兩位人員與工作時間 |
+| 本機 Agent（stdio） | 用後台給的設定（名稱 `booking`）：9 個工具；get_shop → find_availability → create_booking 成立；重試回同一筆；另一位顧客訂同一人員同一時段回 `slot_unavailable`，替代時段是另一位人員 |
+| 畫面 | Chrome 截圖：預約日曆亮色／暗色、總覽（新增「服務與排班」步驟，有服務、人員與工作時間時顯示「可預約」）、服務與排班（暗色）、手機寬度。依截圖補上 `.panel + .section-head` 間距 |
+| 換品牌 | 測試副本只改 `theme.css` 的 `--brand` 成藍色，重新執行自動重建，側欄、按鈕、日曆按鈕、今天欄位與預約事件全部變藍 |
+| Docker Compose | 乾淨副本 `docker compose up --build`：PostgreSQL 不需要 btree_gist 即可 migrate；backend 由 waitress 服務；經 nginx 的畫面、health、runtime_bootstrap、seed_demo、登入、網頁建立擁有者 403、HTTPS proxy 後 MCP 網址為 `https://`、HTTP MCP 核心工具，以及預約建立／重試同一筆／另一位顧客同時段 `slot_unavailable`。測完 `down -v` 刪除 |
+| Frontend / MCP | 正式建置通過（check:style：沒有 theme.css 以外的色碼）；MCP 10 項測試通過 |
+| 程式整理 | Ruff、Prettier（修改過的檔案） |
+
+尚未執行：Windows 上的 `start.bat`、`scripts/http_smoke.py`（PostgreSQL 開發路線，其中的預約 smoke 需要它提供的 `SMOKE_BOOKING`）、與真實 Agenrena 的授權與通知。
+
+已知、非本次造成：預約日曆設定了 `scrollTime="08:00:00"`，但日曆高度為自動，沒有內部捲動區，所以打開時從 0 點開始而不是 8 點。
+
 ## 2026-09-28：一間店一套 App，同步核心的 Agenrena 連接
 
 在 scratchpad 的獨立 venv 與臨時 PostgreSQL 14 叢集執行，不讀寫商家、Agenrena 或 Runtime 的既有資料庫；Agenrena 以模擬的 HTTP 回應代替。當天先做過以據點為單位的版本，同日決定拿掉 Location；以下為最終版本的結果，initial migration 直接重寫（含 btree_gist extension）。

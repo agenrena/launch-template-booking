@@ -2,14 +2,9 @@
 
 import uuid
 
-import django.contrib.postgres.constraints
-import django.contrib.postgres.fields.ranges
 import django.core.validators
 import django.db.models.deletion
-from django.contrib.postgres.operations import BtreeGistExtension
 from django.db import migrations, models
-
-import booking.models
 
 
 class Migration(migrations.Migration):
@@ -20,7 +15,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        BtreeGistExtension(),
         migrations.CreateModel(
             name="Service",
             fields=[
@@ -170,36 +164,6 @@ class Migration(migrations.Migration):
                 "constraints": [
                     models.CheckConstraint(
                         condition=models.Q(("end__gt", models.F("start"))), name="booking_forward"
-                    ),
-                    django.contrib.postgres.constraints.ExclusionConstraint(
-                        condition=models.Q(("status", "confirmed")),
-                        expressions=[
-                            ("staff", "="),
-                            (
-                                booking.models.TsTzRange(
-                                    "start",
-                                    "end",
-                                    django.contrib.postgres.fields.ranges.RangeBoundary(),
-                                ),
-                                "&&",
-                            ),
-                        ],
-                        name="booking_no_overlap_staff",
-                    ),
-                    django.contrib.postgres.constraints.ExclusionConstraint(
-                        condition=models.Q(("status", "confirmed")),
-                        expressions=[
-                            ("customer", "="),
-                            (
-                                booking.models.TsTzRange(
-                                    "start",
-                                    "end",
-                                    django.contrib.postgres.fields.ranges.RangeBoundary(),
-                                ),
-                                "&&",
-                            ),
-                        ],
-                        name="booking_no_overlap_customer",
                     ),
                 ],
             },

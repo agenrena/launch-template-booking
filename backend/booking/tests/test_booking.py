@@ -19,7 +19,7 @@ from core.permissions import agent_actor, human_actor
 from core.services import update_customer_profile
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.db import IntegrityError, close_old_connections, transaction
+from django.db import close_old_connections
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
@@ -156,22 +156,6 @@ class BookingTests(TestCase):
         self.assertEqual(e.exception.body["error"], "already_booked")
         self.create(customer_id=self.customer_b, staff_id=self.staff_b)
         self.assertEqual(Booking.objects.count(), 2)
-
-    def test_database_constraints_block_direct_overlap(self):
-        b = self.create()
-        for staff, customer in [(self.staff, self.customer_b), (self.staff_b, self.customer)]:
-            with self.assertRaises(IntegrityError), transaction.atomic():
-                Booking.objects.create(
-                    customer=customer,
-                    staff=staff,
-                    service=self.service,
-                    start=b.start,
-                    end=b.end,
-                    price=100,
-                    currency="TWD",
-                    actor="test",
-                    source="staff",
-                )
 
     def test_back_to_back_and_cancel_retry(self):
         b = self.create()

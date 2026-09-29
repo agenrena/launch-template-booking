@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from core.models import Business, CustomerIdentity
 from core.permissions import authorize, scoped_customer
 from core.services import audit
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -97,6 +97,8 @@ def create_booking(
         identity = CustomerIdentity.objects.select_for_update().get(pk=customer_id.identity_id)
         customer = Customer.objects.get(pk=customer_id.pk)
     # Lock order: customer identity, booking (on updates), staff. Staff changes use same staff lock.
+    # These locks (PostgreSQL) or the IMMEDIATE write transaction (SQLite) are what keep
+    # two requests from both passing the overlap checks below. Keep writes in here.
     staff = Staff.objects.select_for_update().get(pk=staff_id.pk)
     # Retry identity does not depend on the current catalog duration/price.
     repeated = Booking.objects.filter(
@@ -113,23 +115,18 @@ def create_booking(
     if existing := _existing(customer, start, end):
         raise BookingError("already_booked", booking_id=str(existing.pk))
     _validate(service, staff, start)
-    try:
-        with transaction.atomic():
-            record = Booking.objects.create(
-                customer=customer,
-                service=service,
-                staff=staff,
-                start=start,
-                end=end,
-                price=service.price,
-                currency=BookingSettings.current().currency,
-                source="agent" if actor.kind == "agent" else "staff",
-                actor=actor.id,
-                note=note,
-            )
-    except IntegrityError:
-        _validate(service, staff, start)
-        raise BookingError("booking_conflict") from None
+    record = Booking.objects.create(
+        customer=customer,
+        service=service,
+        staff=staff,
+        start=start,
+        end=end,
+        price=service.price,
+        currency=BookingSettings.current().currency,
+        source="agent" if actor.kind == "agent" else "staff",
+        actor=actor.id,
+        note=note,
+    )
     audit(actor, "booking.created", record, customer=identity)
     announce(record, "created")
     return record
@@ -157,13 +154,8 @@ def reschedule_booking(booking_id, *, actor, start=None, staff_id=None, customer
     if existing := _existing(record.customer, start, end, exclude=record):
         raise BookingError("already_booked", booking_id=str(existing.pk))
     _validate(record.service, staff, start, exclude=record, duration_minutes=duration)
-    try:
-        with transaction.atomic():
-            record.start, record.end, record.staff = start, end, staff
-            record.save(update_fields=["start", "end", "staff"])
-    except IntegrityError:
-        _validate(record.service, staff, start, exclude=record, duration_minutes=duration)
-        raise BookingError("booking_conflict") from None
+    record.start, record.end, record.staff = start, end, staff
+    record.save(update_fields=["start", "end", "staff"])
     audit(actor, "booking.rescheduled", record, customer=identity)
     announce(record, "rescheduled")
     return record

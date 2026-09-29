@@ -1,10 +1,4 @@
-import { Customers } from "./booking/Customers";
 import { lazy, Suspense, useEffect, useState } from "react";
-const BookingWorkspace = lazy(() =>
-  import("./booking/BookingWorkspace").then((m) => ({
-    default: m.BookingWorkspace,
-  })),
-);
 import { api, client, useData, type User, type Business } from "./api";
 import { Alert, Field, Form, text, useAction } from "./ui";
 import { roleName } from "./labels";
@@ -14,10 +8,16 @@ import { Members } from "./pages/Members";
 import { Agents } from "./pages/Agents";
 import { AuditPage } from "./pages/Audit";
 import { Account } from "./pages/Account";
+import { Icon } from "./icons";
+import { Customers } from "./booking/Customers";
+const BookingWorkspace = lazy(() =>
+  import("./booking/BookingWorkspace").then((m) => ({
+    default: m.BookingWorkspace,
+  })),
+);
 
 export function App() {
-  const session = useData<{ user: User | null }>("session/"),
-    action = useAction();
+  const session = useData<{ user: User | null; setup: boolean }>("session/");
   if (session.isPending)
     return <main className="loading">正在載入工作空間…</main>;
   if (session.error)
@@ -29,72 +29,121 @@ export function App() {
       </main>
     );
   if (!session.data.user)
-    return (
-      <div className="login-shell">
-        <aside className="login-story">
-          <div className="wordmark">
-            agenrena <span>BOOKING</span>
-          </div>
-          <div>
-            <p className="eyebrow">YOUR BUSINESS, YOUR WAY</p>
-            <h1>
-              從你的生意，
-              <br />
-              開始。
-            </h1>
-            <p>
-              一個屬於你的工作空間。
-              <br />
-              管理商家資料與團隊，讓服務從這裡展開。
-            </p>
-          </div>
-          <small>ONE STORE · ONE APP</small>
-        </aside>
-        <main className="login">
-          <p className="eyebrow">WELCOME BACK</p>
-          <h1>登入商家後台</h1>
-          <p className="muted">使用這個商家的帳號與密碼。</p>
-          <Form
-            busy={action.busy}
-            onSubmit={(d) =>
-              action.run(async () => {
-                await api("login/", "POST", {
-                  username: text(d, "username"),
-                  password: String(d.get("password")),
-                });
-                client.clear();
-                await session.refetch();
-              })
-            }
-          >
-            <Field label="帳號">
-              <input
-                name="username"
-                autoComplete="username"
-                required
-                autoFocus
-              />
-            </Field>
-            <Field label="密碼">
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-            </Field>
-            <Alert message={action.error} />
-            <button className="primary wide">
-              {action.busy ? "登入中…" : "登入工作空間 →"}
-            </button>
-          </Form>
-          <p className="login-help">
-            需要帳號或重設密碼？請聯絡這個商家的擁有者。
-          </p>
-        </main>
-      </div>
-    );
+    return <Entry setup={session.data.setup} done={() => session.refetch()} />;
   return <Console user={session.data.user} />;
+}
+function Entry({
+  setup,
+  done,
+}: {
+  setup: boolean;
+  done: () => Promise<unknown>;
+}) {
+  const action = useAction();
+  const submit = (path: string, d: FormData) =>
+    action.run(async () => {
+      const password = String(d.get("password"));
+      if (setup && password !== String(d.get("confirm")))
+        throw new Error("兩次輸入的密碼不同。");
+      await api(path, "POST", { username: text(d, "username"), password });
+      client.clear();
+      await done();
+    });
+  return (
+    <div className="login-shell">
+      <aside className="login-story">
+        <div className="wordmark">
+          agenrena<span>BOOKING</span>
+        </div>
+        <div>
+          <p className="eyebrow">YOUR BUSINESS, YOUR WAY</p>
+          <h1>
+            從你的生意，
+            <br />
+            開始。
+          </h1>
+          <p>
+            一個屬於你的工作空間。
+            <br />
+            管理商家資料與團隊，讓服務從這裡展開。
+          </p>
+        </div>
+        <small>ONE STORE · ONE APP</small>
+      </aside>
+      <main className="login">
+        {setup ? (
+          <>
+            <p className="eyebrow">FIRST TIME</p>
+            <h1>建立擁有者帳號</h1>
+            <p className="muted">
+              這是這間店的第一個帳號，之後用它登入、管理團隊與 Agent。
+            </p>
+            <Form busy={action.busy} onSubmit={(d) => submit("setup/", d)}>
+              <Field label="帳號">
+                <input
+                  name="username"
+                  autoComplete="username"
+                  required
+                  autoFocus
+                />
+              </Field>
+              <Field label="密碼">
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                />
+              </Field>
+              <Field label="再輸入一次密碼">
+                <input
+                  name="confirm"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                />
+              </Field>
+              <Alert message={action.error} />
+              <button className="primary wide">
+                {action.busy ? "建立中…" : "建立並進入工作空間 →"}
+              </button>
+            </Form>
+          </>
+        ) : (
+          <>
+            <p className="eyebrow">WELCOME BACK</p>
+            <h1>登入商家後台</h1>
+            <p className="muted">使用這個商家的帳號與密碼。</p>
+            <Form busy={action.busy} onSubmit={(d) => submit("login/", d)}>
+              <Field label="帳號">
+                <input
+                  name="username"
+                  autoComplete="username"
+                  required
+                  autoFocus
+                />
+              </Field>
+              <Field label="密碼">
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </Field>
+              <Alert message={action.error} />
+              <button className="primary wide">
+                {action.busy ? "登入中…" : "登入工作空間 →"}
+              </button>
+            </Form>
+            <p className="login-help">
+              需要帳號或重設密碼？請聯絡這個商家的擁有者。
+            </p>
+          </>
+        )}
+      </main>
+    </div>
+  );
 }
 function Console({ user }: { user: User }) {
   const [tab, setTab] = useState("calendar"),
@@ -105,19 +154,19 @@ function Console({ user }: { user: User }) {
     if (!owner && ["members", "agents"].includes(tab)) setTab("overview");
   }, [owner, tab]);
   const nav = [
-    ["calendar", "預約日曆", "◷"],
-    ["customers", "顧客", "◎"],
-    ["catalog", "服務與排班", "▦"],
-    ["overview", "總覽", "◈"],
-    ["business", "商家資料", "▤"],
+    ["calendar", "預約日曆"],
+    ["customers", "顧客"],
+    ["catalog", "服務與排班"],
+    ["overview", "總覽"],
+    ["business", "商家資料"],
     ...(owner
       ? [
-          ["members", "團隊成員", "◎"],
-          ["agents", "Agent 連接", "◇"],
+          ["members", "團隊成員"],
+          ["agents", "Agent 連接"],
         ]
       : []),
-    ["audit", "操作紀錄", "≡"],
-    ["account", "我的帳號", "○"],
+    ["audit", "操作紀錄"],
+    ["account", "我的帳號"],
   ];
   return (
     <div className="shell">
@@ -126,9 +175,7 @@ function Console({ user }: { user: User }) {
           agenrena<span>BOOKING</span>
         </div>
         <div className="workspace">
-          <span className="workspace-icon">
-            {(business.data?.name ?? "商")[0]}
-          </span>
+          <span className="tile">{(business.data?.name || "商")[0]}</span>
           <div>
             <strong>{business.data?.name ?? "商家工作空間"}</strong>
             <small>獨立商家 App</small>
@@ -136,13 +183,13 @@ function Console({ user }: { user: User }) {
         </div>
         <p className="nav-label">工作空間</p>
         <nav>
-          {nav.map(([key, label, icon]) => (
+          {nav.map(([key, label]) => (
             <button
               key={key}
               aria-current={tab === key ? "page" : undefined}
               onClick={() => setTab(key)}
             >
-              <span aria-hidden>{icon}</span>
+              <Icon name={key} />
               {label}
             </button>
           ))}
@@ -171,10 +218,9 @@ function Console({ user }: { user: User }) {
       <div className="main">
         <header className="topbar">
           <span>
-            工作空間 <span className="muted"> / </span>{" "}
-            {nav.find((n) => n[0] === tab)?.[1]}
+            工作空間 / <strong>{nav.find((n) => n[0] === tab)?.[1]}</strong>
           </span>
-          <span className="badge">{roleName(user.role)}</span>
+          <span className="badge brand">{roleName(user.role)}</span>
         </header>
         <main className="content">
           <Alert message={action.error || business.error?.message} />

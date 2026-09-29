@@ -27,6 +27,12 @@
 18. **通知是核心能力，事件由業務模板決定。** 核心提供 `notify_customer`，在交易提交後送進顧客與這間店的對話；送達失敗不影響業務資料，店家撤銷授權後自動停止。核心本身不主動發訊息。
 19. **不在這一版：** identity link（有簽章的顧客身分連結）、Runtime 自動建立 Vendor 與輪替、接收顧客訊息（inbound webhook）、品牌層跨店識別與合併報表。
 
+## 預設在店家自己的電腦上（2026-09-30）
+
+20. **Agent 由商家帶來、跑在商家這一端**；Agenrena 是帶著自己 Agent 進來的社群，不代管 Agent，也不回呼 App。所以 App 不需要對外網址：Agent 在同一台電腦以 stdio 使用 MCP，通知由 App 主動連出 Agenrena。
+21. **預設本機執行，伺服器是選項。** 一間店 = 一個資料夾：只需要 uv 與 Node.js，SQLite 資料在 `data/`，點兩下 `start.command`／`start.bat` 就開始，第一次在網頁上建立擁有者。拿掉的是 Docker 與資料庫伺服器（最容易卡住不懂軟體的人），保留 Python + Node（Agent 能自己裝，而且改前端本來就需要 Node）。需要隨時遠端連線時再用 Docker Compose + PostgreSQL 放到伺服器；同一份程式碼。本機與伺服器都用 waitress。
+22. 同時支援 SQLite 與 PostgreSQL，只用兩者都有的功能。「先檢查再寫入」靠 services 裡的交易與鎖，不靠 PostgreSQL 專屬的資料庫限制。
+
 ## Booking 模板已確認決策
 
 - 使用者確認 Booking 使用 Business Core 的完整副本，不做執行期共用依賴。
@@ -36,3 +42,5 @@
 - 拷貝核心後新增 Booking 權限到 owner/admin 與同一 customer_service role。核心 profile 姓名與 Booking 顧客共用 identity.display_name。
 - 2026-09-28：隨核心拿掉 Location（決策 3、14），取代 2026-09-27 的「Location 必須實際參與預約」「人員歸屬一個據點」「日曆依據點查看」「空檔與改期明確使用據點」。人員、預約、空檔都不再有據點；連鎖店每間店各自一套 Booking App。
 - 2026-09-28：預約建立、改期、取消（Agent 或後台）都送出預約卡片到顧客與這間店的對話；不含備註，沒有提醒排程。
+- 2026-09-30：預設在店家電腦上執行（決策 20–22）。拿掉兩條 PostgreSQL exclusion constraint（人員、顧客不重疊）與 btree_gist；不重疊改由 create/reschedule 既有的鎖與檢查保證，兩種資料庫都以「兩位顧客同時訂同一時段只成立一筆」的並行測試驗證。直接繞過 services 寫入的情境不另外防護。
+- 2026-09-30：同步核心的樣式集中（theme.css）；預約專用樣式與 FullCalendar 顏色改用 theme 變數，換品牌與暗色模式會一起變。總覽的「服務與排班」步驟在有啟用中的服務、人員與工作時間時算完成。

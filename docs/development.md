@@ -4,7 +4,9 @@
 
 ## 本機
 
-Python 3.13、Node 22.12+、PostgreSQL 14+。使用自己的虛擬環境，pip install -r backend/requirements.txt。設定 SECRET_KEY、DATABASE_URL、COOKIE_SECURE=false、CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173。後端不自動讀取 .env，Compose 會讀取根目錄 .env。
+Python 3.13、Node 22.12+。沒有 `DATABASE_URL` 時用 SQLite（`data/`，或 `DATA_DIR` 指定的資料夾）；設定後用 PostgreSQL 14+。兩種都是正式支援的路線，後端測試兩種都要過。
+
+最直接的方式是 `./start.command`：它就是商家實際執行的樣子，改完程式重新執行會自動重建；`./start.command manage <指令>` 以這台電腦的設定執行 Django 管理指令。需要前端即時重載時，使用自己的虛擬環境，pip install -r backend/requirements.txt，設定 SECRET_KEY、COOKIE_SECURE=false、CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173。後端不自動讀取 .env（start.py 與 Compose 會）。
 
 ```sh
 .venv/bin/python backend/manage.py migrate
@@ -21,19 +23,20 @@ Vite 5173 代理 API 8040、MCP 8765。BOOKING_DEV_API / BOOKING_DEV_MCP 可調�
 - 人的授權：core/permissions.py，owner/admin。Agent 角色：AgentRole / AgentPermission，透過新的 migration 調整，不另做一套工具內權限判斷。
 - 登入／成員／金鑰：core/services.py、core/views.py 與核心前端頁面。
 - 服務、排班、顧客、預約：booking/models.py、serializers.py、services.py、views.py。
-- 空檔：booking/availability.py；改時長／緩衝／資源規則要同時調整 create/reschedule 和資料庫防撞單約束。
+- 空檔：booking/availability.py；改時長／緩衝／資源規則要同時調整 create/reschedule 的重疊檢查。
+- 不重疊：create/reschedule 在 `transaction.atomic` 裡先鎖顧客 identity 與人員（`select_for_update`），再檢查、再寫入。PostgreSQL 靠這些鎖排隊，SQLite 靠寫入交易的 IMMEDIATE 模式排隊；沒有資料庫層的防撞單約束，所以預約的寫入都要經過 services。只用兩種資料庫都有的功能（不要用 `django.contrib.postgres`）。
 - 顧客 scope：booking/services.customer_rows 同時檢查 permission 與 identity，物件 ID 查詢也必須經過它。
 - 姓名僅存 core.CustomerIdentity.display_name，電話屬 Booking.Customer。顧客 reference 僅存 core.CustomerIdentity.agenrena_customer_ref，不以姓名合併。
 - 顧客通知：booking/notifications.py 決定建立／改期／取消的卡片內容，經 core.services.notify_customer 在交易提交後送到顧客與那間店的 Agenrena 對話。新增事件時沿用 announce，message_id 對同一事實保持穩定；測試以 patch("core.agenrena._request", …) 模擬平台。
 - 一套 App 就是一間店：人員、預約、空檔都沒有據點欄位。連鎖店每間店各自部署。
 - UI：frontend/src/booking；共同頁面在 frontend/src/pages。登入先載入基本殼層，日曆另行載入。
+- 更換外觀：只改 `frontend/src/theme.css`。換品牌色改 `--brand`（淺色品牌色時把 `--brand-fg` 改成深色），淺底、hover、日曆按鈕與事件顏色會自動跟著變；暗色模式在同檔的 `prefers-color-scheme` 區塊。`style.css` 與元件只能用 `var(--…)`，`npm run check:style`（build 也會跑）會擋下寫死的顏色。預約專用樣式在 style.css 的「預約」段落，FullCalendar 的 `--fc-*` 變數也在那裡接到 theme。
 - MCP：core.ts 的共通工具與 server.ts 的預約工具合成一個 server。HTTP 每次驗證 key；後端是授權的最終判定。
 
 ## 保留規則
 
 UTC 儲存、店家時區顯示、輸入必須帶 offset。DST 處理按實際分鐘計算。Booking 保存價格／幣別與起訖時間快照；改期不因目錄更新而改時長。相同有效預約重試回原筆；取消後重訂是新筆。
 
-新的 PostgreSQL schema 含 btree_gist extension，建立 extension 需要資料庫管理權限；Runtime 的 migration role 必須已具備適當支援。正常 App 不應取得 schema 管理權限。
 
 ## 驗證
 

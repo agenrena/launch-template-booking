@@ -32,8 +32,8 @@ export async function api<T>(
   }
   return body as T;
 }
-export function useData<T>(path: string) {
-  return useQuery({ queryKey: [path], queryFn: () => api<T>(path) });
+export function useData<T>(path: string, enabled = true) {
+  return useQuery({ queryKey: [path], queryFn: () => api<T>(path), enabled });
 }
 export async function change<T>(path: string, method: string, data?: unknown) {
   const result = await api<T>(path, method, data);
@@ -74,6 +74,16 @@ export interface AgentKey {
   revoked_at: string | null;
   created_at: string;
 }
+export type McpInfo =
+  | { transport: "http"; url: string }
+  | {
+      transport: "stdio";
+      name: string;
+      command: string;
+      args: string[];
+      env: Record<string, string>;
+      key_env: string;
+    };
 export interface AgenrenaState {
   configured: boolean;
   status: "none" | "pending" | "connected" | "revoked" | "expired";
@@ -150,5 +160,4 @@ const bookingErrors: Record<string, string> = {
   in_past: "無法修改已開始的預約。",
   not_reschedulable: "這筆預約目前不能改期。",
   inactive_resource: "服務或人員已停用。",
-  booking_conflict: "時段已被預約，請重新查詢。",
 };

@@ -36,6 +36,8 @@ GET profile 不建立資料；第一次經顧客確認的 update 才建立。內
 
 ## HTTP / stdio
 
+這間店的 Agent 在商家這一端。App 在這台電腦上（預設）時，Agent 以 stdio 啟動 MCP，後台「Agent 連接」給出完整的 `mcpServers` 設定（`command`、`args`、API 網址，建立金鑰時填好金鑰；變數用核心的 `CORE_API_URL`／`CORE_AGENT_KEY`，本 MCP 兩組名稱都接受）；App 不需要對外開放。App 放在伺服器上時用 HTTP。
+
 HTTP: POST /mcp，Bearer abc_…，無 MCP session。tools/list 也會先驗證金鑰。Session cookies 不能代替 Agent 金鑰，Agent 金鑰不能進後台。
 
 ```sh

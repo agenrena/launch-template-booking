@@ -2,7 +2,7 @@
 
 一份完整、可獨立客製的預約 App，一間店一套。它由 **Business Core 的副本 + Booking 業務** 組成，和 `business_core` 同層，但執行時不依賴它。
 
-這間店在 Agenrena 上是一個 Business Profile，這套 App 是它的軟體。商家以後台管理，Business Agent 透過 MCP 面對顧客；Coding Agent 負責修改程式與提交 Runtime 部署。連鎖店每間店各自部署一套。
+這間店在 Agenrena 上是一個 Business Profile，這套 App 是它的軟體。商家以後台管理，商家自己帶來的 Agent 透過 MCP 面對顧客；Coding Agent 負責修改程式。預設就跑在店家自己的電腦上，需要時再放到伺服器。連鎖店每間店各自一套。
 
 ## 能力與資料歸屬
 
@@ -20,31 +20,35 @@
 
 這是全新資料庫的 schema，使用者已確認沒有舊資料要搬移。**不要對舊版 Booking 資料庫直接套用這組重寫的初始 migration。**
 
-## 啟動
+## 在這台電腦上開始（預設）
 
-需要 Docker Compose 與 Python 3。原始碼開發使用 Python 3.13、Node 22.12+、PostgreSQL 14+。
+一間店 = 一個資料夾。不需要 Docker 或資料庫伺服器，只需要 [uv](https://docs.astral.sh/uv/) 與 Node.js 22.12+；沒有的話請 Agent 安裝。
 
-```sh
-python3 scripts/setup.py
-docker compose up --build -d
-docker compose exec backend python manage.py create_owner --username owner
-```
+- macOS：點兩下 `start.command`（或在終端機執行 `./start.command`）
+- Windows：點兩下 `start.bat`
 
-第三步私下設定第一位擁有者的密碼。開啟 **http://localhost:8080**。
+第一次會自動產生這台電腦專用的 `.env`、安裝套件、建置畫面並建立資料庫，完成後打開 **http://127.0.0.1:8080**，在畫面上建立擁有者帳號（只能在這台電腦上建立，且只有第一次）。之後再執行只會直接開啟；程式被 Agent 改過時會自動重新建置。按 Ctrl+C 或關掉視窗就停止。
 
-依序填商家資料 → 新增服務 → 新增人員／工作時間 → 建立預約。可選擇加入示範服務與排班：
+依序填商家資料 → 新增服務 → 新增人員／工作時間 → 建立預約。第一次見店家時可以先放入示範服務與排班：
 
 ```sh
-docker compose exec backend python manage.py seed_demo
+./start.command manage seed_demo        # Windows：start.bat manage seed_demo
 ```
 
-不會建立示範帳密、金鑰或顧客；重跑不覆蓋既有設定。`setup.py` 拒絕覆蓋 `.env`。首次資料庫只有 Business、預約設定和顧客服務權限組，沒有帳號、服務、人員、顧客或預約。
+不會建立示範帳密、金鑰或顧客；重跑不覆蓋既有設定。首次資料庫只有 Business、預約設定和顧客服務權限組，沒有帳號、服務、人員、顧客或預約。
 
-登入使用獨立 Django session，不接 Agenrena SSO，也不共用 Firebase。密碼可在「我的帳號」更改；忘記時由部署管理者執行 `docker compose exec backend python manage.py changepassword <username>`。
+**資料都在 `data/`**（SQLite）。備份或換電腦：停止 App 後複製整個專案資料夾（含 `data/` 與 `.env`）。`data/` 與 `.env` 不進 Git。登入使用獨立 Django session，不接 Agenrena SSO，也不共用 Firebase。密碼可在「我的帳號」更改；忘記時執行 `./start.command manage changepassword <帳號>`，或請 Agent 代為執行。
+
+要隨時從外面連線時，改用 Docker Compose + PostgreSQL 放到伺服器上，見 [部署](docs/deployment.md)。同一份程式碼，以 `DATABASE_URL` 決定用哪種資料庫。
 
 ## 顧客服務 Agent
 
-這間店在 Agenrena 上的客服 Agent 使用擁有者在「Agent 連接」建立的金鑰，連到 `/mcp` 並帶 `Authorization: Bearer abc_…`。正式公開使用 HTTPS，金鑰不能放在顧客端。
+這間店的 Agent 由商家自己帶來、跑在商家這一端。擁有者在「Agent 連接」建立金鑰（只顯示一次）：
+
+- **Agent 在這台電腦上（預設）**：頁面直接給一段 `mcpServers` 設定（`node mcp/dist/index.js --stdio`，金鑰已填好），交給 Agent 即可，不需要對外開放任何網址。
+- **App 放在伺服器上**：連到 `https://<網域>/mcp` 並帶 `Authorization: Bearer abc_…`。
+
+金鑰不能放在顧客端。
 
 Agenrena 代理聊天室附帶這間店的 `customer_ref`（`bcr_` 加 32 個 hex）；工具接收它，核心對應至 `CustomerIdentity.agenrena_customer_ref`。App 內的 Booking Customer 以一對一關係連結該 identity，不另存第二份 reference。姓名不自動合併。
 
@@ -66,6 +70,8 @@ Agenrena 代理聊天室附帶這間店的 `customer_ref`（`bcr_` 加 32 個 he
 ## 程式結構
 
 ```text
+scripts/start.py               在這台電腦上執行（start.command / start.bat 呼叫它）
+frontend/src/theme.css         顏色、字體、圓角與暗色模式（換品牌只改這裡，預約日曆也跟著變）
 backend/core/                  共同能力的本地副本（含 Agenrena 連接與 notify_customer）
 backend/booking/models.py      Booking domain、Customer.identity
 backend/booking/services.py    預約寫入／授權／操作紀錄
@@ -82,12 +88,14 @@ mcp/src/server.ts              預約工具，組合核心工具
 ## 驗證
 
 ```sh
-# 已設定專用測試 PostgreSQL 的 DATABASE_URL / SECRET_KEY
+# 沒有 DATABASE_URL 時用 SQLite；兩種資料庫都要通過
 .venv/bin/python backend/manage.py test core.tests booking.tests --noinput
+DATABASE_URL=postgresql://… .venv/bin/python backend/manage.py test core.tests booking.tests --noinput
 .venv/bin/python backend/manage.py makemigrations --check --dry-run
 npm run build --prefix frontend
 npm test --prefix mcp
-# 下列腳本自行建立及刪除獨立 smoke database，需開發用 CREATEDB 權限
+./start.command --no-browser   # 實際啟動本機版
+# 伺服器路線：下列腳本自行建立及刪除獨立 PostgreSQL smoke database，需開發用 CREATEDB 權限
 .venv/bin/python scripts/http_smoke.py
 ```
 
