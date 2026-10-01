@@ -60,3 +60,11 @@
 HTTP smoke 自動建立隨機 database 與隨機帳密，結束即停止程序並清除該 database。交付不含 .env、密碼、Agent key、顧客資料、node_modules、virtualenv 或建置產物。
 
 本次使用者明確允許重寫 schema，不包含舊版 Booking 資料庫的升級／資料搬移路徑。
+
+## 2026-10-02：商家自訂軟體名稱
+
+- 全新資料庫的 core 與業務測試：SQLite、隔離 PostgreSQL 17 各 67 項通過；makemigrations --check --dry-run 通過。
+- 前端 TypeScript、check:style 與 Vite build 通過。
+- 命名測試涵蓋無設定／空白／無效設定的預設值、中文與特殊字元、初始化後不覆蓋、登入前讀取、登入後改名與未授權拒絕。
+- Agenrena 下載 ZIP 的純 Python 測試 9 項通過；以產出的設定實際初始化 Core 臨時 SQLite，確認採用下載名稱。
+- 瀏覽器視覺與互動驗收未完成：電腦操作工具未獲 Chrome 權限。Agenrena 後端完整 Django 測試依其 AGENTS.md 須由使用者於既有環境執行；未執行真實 S3／下載網站端到端驗證，也尚未發布模板。
