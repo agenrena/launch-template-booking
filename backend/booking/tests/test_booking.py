@@ -19,7 +19,7 @@ from core.permissions import agent_actor, human_actor
 from core.services import update_customer_profile
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.db import close_old_connections
+from django.db import OperationalError, close_old_connections
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
@@ -515,6 +515,73 @@ class BookingNotificationTests(TestCase):
             service=self.service,
             staff_id=self.staff,
             start=self.start,
+        )
+
+
+@override_settings(AGENRENA_VENDOR_ID="vendor-1", AGENRENA_VENDOR_SECRET="bvs_private")
+class BookingNotificationCommitTests(TransactionTestCase):
+    """HTTP results stay successful when delivery fails after a real commit."""
+
+    def setUp(self):
+        from core.tests.test_agenrena import FakeAgenrena
+
+        fixtures(self)
+        cache.clear()
+        self.platform = FakeAgenrena()
+        patcher = patch("core.agenrena._request", self.platform)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        AgenrenaConnection.objects.create(status="connected", grant_id="grant-store")
+        self.console = APIClient()
+        self.console.force_login(self.owner)
+
+    def booking_lifecycle(self):
+        created = self.console.post(
+            "/api/console/bookings/",
+            {
+                "customer_id": str(self.customer.pk),
+                "service": str(self.service.pk),
+                "staff_id": str(self.staff.pk),
+                "start": self.start.isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.data)
+        record = Booking.objects.get(pk=created.data["id"])
+        self.assertEqual(record.status, "confirmed")
+        path = f"/api/console/bookings/{record.pk}/"
+        later = self.start + timedelta(hours=2)
+        changed = self.console.patch(path, {"start": later.isoformat()}, format="json")
+        self.assertEqual(changed.status_code, 200, changed.data)
+        record.refresh_from_db()
+        self.assertEqual(record.start, later)
+        cancelled = self.console.post(path + "cancel/", {}, format="json")
+        self.assertEqual(cancelled.status_code, 200, cancelled.data)
+        record.refresh_from_db()
+        self.assertEqual(record.status, "cancelled")
+        for action in ("booking.created", "booking.rescheduled", "booking.cancelled"):
+            self.assertTrue(AuditEvent.objects.filter(action=action).exists())
+
+    def test_unexpected_delivery_error_keeps_all_booking_changes(self):
+        with patch("core.agenrena._request", side_effect=ValueError("private delivery error")):
+            self.booking_lifecycle()
+        failures = AuditEvent.objects.filter(action="agenrena.message_failed")
+        self.assertEqual(failures.count(), 3)
+        self.assertTrue(all(e.detail == {"error": "DELIVERY_OUTCOME_UNKNOWN"} for e in failures))
+
+    def test_notification_audit_failure_keeps_all_booking_changes(self):
+        # Booking imports its own audit function; only notification auditing fails.
+        with (
+            patch("core.services.audit", side_effect=OperationalError("private audit error")),
+            self.assertLogs("core.services", level="ERROR") as logs,
+        ):
+            self.booking_lifecycle()
+        self.assertEqual(
+            logs.output,
+            ["ERROR:core.services:Agenrena delivery outcome could not be recorded."] * 3,
+        )
+        self.assertEqual(
+            len([c for c in self.platform.calls if c["path"].endswith("/messages/send/")]), 3
         )
 
 

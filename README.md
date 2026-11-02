@@ -56,7 +56,7 @@ Agenrena 代理聊天室附帶這間店的 `customer_ref`（`bcr_` 加 32 個 he
 
 顧客確認服務、人員、時間及價格後才建立預約；改期直接修改原筆，不先取消再訂。
 
-擁有者在「商家資料」連接 Agenrena（部署需注入 `AGENRENA_VENDOR_ID`／`AGENRENA_VENDOR_SECRET`，見 [部署](docs/deployment.md)）。連接後，不論 Agent 或後台人員建立、改期、取消預約，顧客都會在與這間店的 Agenrena 對話收到一張預約卡片（服務、人員、時間、金額；不含備註）。沒有 reference 的顧客或尚未連接時不發送；發送失敗不影響預約。
+擁有者先在「商家資料」按「檢查連接」：若下載時已授權，直接保存既有授權與聊天網址；確認沒有授權後才提供「連接」，由擁有者決定是否掃碼授權（部署需注入 `AGENRENA_VENDOR_ID`／`AGENRENA_VENDOR_SECRET`，見 [部署](docs/deployment.md)）。連接後，不論 Agent 或後台人員建立、改期、取消預約，顧客都會在與這間店的 Agenrena 對話收到一張預約卡片（服務、人員、時間、金額；不含備註）。沒有 reference 的顧客或尚未連接時不發送；發送失敗不影響預約。
 
 ## 明確的簡化
 

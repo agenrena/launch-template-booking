@@ -40,6 +40,27 @@ GET profile 不建立資料；第一次經顧客確認的 update 才建立。內
 
 HTTP: POST /mcp，Bearer abc_…，無 MCP session。tools/list 也會先驗證金鑰。Session cookies 不能代替 Agent 金鑰，Agent 金鑰不能進後台。
 
+### MCP 連線 JSON 範例
+
+以下供支援 `mcpServers`、`url` 與 `headers` 格式的 Agent 客戶端設定 Streamable HTTP 連線；其他客戶端依其設定格式填入相同網址與驗證資訊。
+
+```json
+{
+  "mcpServers": {
+    "booking": {
+      "url": "https://your-store.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer abc_REPLACE_WITH_YOUR_AGENT_KEY"
+      }
+    }
+  }
+}
+```
+
+將 `url` 換成後台「Agent 連接」顯示的 MCP 網址，將 `abc_REPLACE_WITH_YOUR_AGENT_KEY` 換成該頁建立的 Agent 金鑰，保留 `Bearer ` 前綴。本機 Compose 網址為 `http://localhost:8080/mcp`，正式對外使用 HTTPS。範例只有佔位值；實際金鑰存入客戶端的私密設定，不提交到 Git。此處使用的是 Agent 金鑰，不是 Agenrena Vendor 憑證。
+
+### stdio
+
 ```sh
 cd mcp
 npm ci
@@ -51,6 +72,8 @@ BOOKING_API_URL=http://127.0.0.1:8040/api/agent-api/ BOOKING_AGENT_KEY=<私下�
 
 ## Agenrena 連接與通知
 
+後端呼叫 Agenrena API 時統一帶上 `User-Agent: Agenrena-Business-Core/0.1`，識別這套 App 的 HTTP client。
+
 ```text
 這間店 = Agenrena 上的一個 Business Profile
 這套 App = 這間店的 Agenrena Vendor（AGENRENA_VENDOR_ID / AGENRENA_VENDOR_SECRET，部署環境注入）
@@ -61,12 +84,25 @@ BOOKING_API_URL=http://127.0.0.1:8040/api/agent-api/ BOOKING_AGENT_KEY=<私下�
 
 連接流程（owner，在「商家資料」頁）：
 
+先按「檢查連接」：`POST /api/console/agenrena/sync/` 使用 Vendor 憑證呼叫 `GET /api/business-api/grants/`。這是手動操作，不在啟動、狀態查詢或背景自動執行；admin 只能讀本地狀態。
+
+- 唯一一筆授權且含 `messages:send`：驗證並保存 `grant_id`、商家名稱與 `chat_url`，回傳 `connected`；不建立 consent session。下載套件時已授權的 App 走這條路徑。
+- 空清單：清除已不存在的本地連接，回傳 `{"status": "none", "chat_url": null}`；畫面才提供「連接」，由 owner 決定是否開始下列掃碼流程。
+- 多筆授權或缺少 `messages:send` 回 409；查詢失敗或資料無效回 502（無效清單為 `INVALID_GRANTS_RESPONSE`）。均保留本地狀態，不選第一筆、不自動重新授權。查詢期間本地連接若已變更，回 409 要求重新檢查。
+- 成功檢查寫入 `agenrena.connection_checked` 稽核；不記錄授權回應內容。重複取得同一筆已連接授權時保留原本的本地連接時間與操作人。
+
+沒有授權時的掃碼流程與中斷操作：
+
 1. `POST /api/console/agenrena/connect/`：App 以 Vendor 身分向 Agenrena 要一個授權連結，回傳 `authorize_url` 與 `expires_at`。連結約 5 分鐘內有效且只能用一次；它不寫入資料庫、不進操作紀錄，後台以 QR code 顯示。
 2. 這間店在 Agenrena 上的 owner/admin 用 Agenrena App 掃描，以這間店的商家身分按同意。
-3. 後台每 3 秒 `POST /api/console/agenrena/check/` 輪詢。Agenrena 不回呼，輪詢是平台的設計。完成後保存 `grant_id` 與商家名稱。
+3. 後台每 3 秒 `POST /api/console/agenrena/check/` 輪詢。Agenrena 不回呼，輪詢是平台的設計。完成後保存 `grant_id`、商家名稱與 `chat_url`；`chat_url` 必須是有效的 HTTP(S) 網址（最多 2048 字元），缺少或無效時回 502（`INVALID_CONSENT_RESPONSE`）並保留等待授權狀態。
 4. `POST /api/console/agenrena/disconnect/` 把 grant 交還 Agenrena 並刪除連接。
 
 `GET /api/console/agenrena/` 回傳 `configured`（部署是否有 Vendor 憑證）與 `status`：`none`、`pending`、`connected`、`revoked`。已連接時要先中斷才能重連。Vendor token 以 Vendor 為單位快取，約 1 小時；被拒絕時重換一次。Vendor secret 不出現在任何回應、操作紀錄或 log。
+
+連接狀態回應包含 `chat_url`：`connected` 時提供保存的商家公開聊天網址，其他狀態（含過期與中斷）回傳 `null`。等待授權時資料庫欄位留空，重新授權時清除舊網址，完成後保存新值。Core 直接使用 Agenrena 回傳的網址，不自行組合；手動查詢與掃碼完成共用驗證和保存邏輯。聊天網址的介面呈現、QR code 與預填訊息由 fork 專案實作。
+
+聊天連結與 `text` 預填訊息的組合範例見開發指引的[使用 Agenrena 聊天入口](development.md#使用-agenrena-聊天入口)。
 
 業務模板送通知：
 
@@ -83,6 +119,7 @@ notify_customer(
 ```
 
 - 在業務寫入的交易裡呼叫；實際送出在交易提交後，永遠不會讓業務寫入失敗或回滾。
+- 提交後的通知或稽核例外均隔離；無法確認結果時記錄 `DELIVERY_OUTCOME_UNKNOWN`，稽核也無法寫入時只留固定日誌，不含例外內容。不自動重送。
 - 送進顧客與這間店的對話；訊息在顧客眼中就是這間店在說話。
 - 卡片只有 `status`（`info`／`success`／`warning`／`cancelled`）、`header`（≤100 字）、`content` 的 label（≤40 字）／value（≤200 字），最多 20 列，不接受其他欄位。
 - Agenrena 回報 grant 已撤銷時，連接改為 `revoked` 並停止發送，後台顯示「授權已失效」，由 owner 重新連接。其他失敗（例如顧客已不存在）只記錄，不改變連接。
